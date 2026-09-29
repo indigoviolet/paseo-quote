@@ -1,0 +1,39 @@
+{
+  "name": "paseo-quote",
+  "version": "0.1.0",
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "client/"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.10.1",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/react": "~19.2.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "description": "Quote selected chat text into the Paseo message box, reply to a passage, or ask about it in a side chat",
+  "license": "MIT",
+  "author": "Chechulin Serhii",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keefeere/paseo-quote.git"
+  },
+  "homepage": "https://github.com/keefeere/paseo-quote#readme",
+  "bugs": {
+    "url": "https://github.com/keefeere/paseo-quote/issues"
+  },
+  "keywords": [
+    "paseo",
+    "paseo-plugin",
+    "quote",
+    "reply",
+    "chat"
+  ]
+}

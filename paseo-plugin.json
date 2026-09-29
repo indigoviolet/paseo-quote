@@ -1,0 +1,7 @@
+{
+  "id": "quote",
+  "description": "Quote selected chat text into the message box, reply to a passage, or ask about it in a side chat",
+  "requirements": {
+    "paseo": ">=0.10.1"
+  }
+}
