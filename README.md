@@ -1,20 +1,38 @@
 # Quote for Paseo
 
 Reply to a piece of an agent's answer instead of the whole thing. Select text in a chat and a
-small bar appears above it:
+small bar appears above it.
 
-- **Quote** puts the selection into this chat's message box as a `> quote` and leaves the cursor
-  under it. Type your answer, select the next paragraph, quote again, and send everything as one
-  message. The quote always lands in the chat it came from, even with several tabs or split panes.
-- **Reply** opens a field right at the selection, like Claude's "Reply". **Enter** sends the quote
-  and your reply at once; **Ctrl/⌘+Enter** adds them to the message box instead. While the agent
-  is running, Enter follows **Settings → Default send** (interrupt, steer, or queue), as the
-  message box does.
-- **Side chat** asks about the passage in a separate agent next to the main chat, so the main
-  thread stays on track. It uses the same provider, model, mode, and thinking level, opens in the
-  right-hand panel, and takes follow-ups there. **Open as tab** turns it into a regular chat tab.
-  It is a subagent of the main chat and is archived with it.
-- **Copy** copies the selection as Markdown: lists, tables, emphasis, and code fences survive.
+![The selection bar above highlighted chat text](images/01-selection-bar.png)
+
+### Quote
+
+Puts the selection into this chat's message box as a `> quote` and leaves the cursor under it.
+Type your answer, select the next paragraph, quote again, and send everything as one message. The
+quote always lands in the chat it came from, even with several tabs or split panes.
+
+![A quote and a reply in the message box](images/02-quote.png)
+
+### Reply
+
+Opens a field right at the selection, like Claude's "Reply". **Enter** sends the quote and your
+reply at once; **Ctrl/⌘+Enter** adds them to the message box instead. While the agent is running,
+Enter follows **Settings → Default send** (interrupt, steer, or queue), as the message box does.
+
+![The reply field with the quoted passage](images/03-reply.png)
+
+### Side chat
+
+Asks about the passage in a separate agent next to the main chat, so the main thread stays on
+track. It uses the same provider, model, mode, and thinking level, opens in the right-hand panel,
+and takes follow-ups there. **Open as tab** turns it into a regular chat tab. It is a subagent of
+the main chat and is archived with it.
+
+![A side chat in the right-hand panel](images/04-side-chat.png)
+
+### Copy
+
+Copies the selection as Markdown: lists, tables, emphasis, and code fences survive.
 
 Quotes of assistant messages keep their Markdown. Multi-line code becomes a fenced block rather
 than a quote.

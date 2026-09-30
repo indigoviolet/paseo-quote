@@ -652,7 +652,7 @@ export function installSelectionBar(client: PluginClientContext): () => void {
       field.placeholder = "Reply to this passage…";
       hint.textContent =
         canSend && canAdd
-          ? `Enter — send · ${modKey()}+Enter — add to chat`
+          ? `Enter — send · ${modKey()}+Enter — add`
           : canSend
             ? "Enter — send"
             : "Enter — add to chat";
