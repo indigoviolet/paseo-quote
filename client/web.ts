@@ -1,11 +1,11 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { Platform } from "react-native";
-import { startSideChat } from "./actions";
+import { sendReply, startSideChat, type SendBehavior } from "./actions";
 import { formatQuote, formatReply, joinParagraph, type QuoteSource } from "./format";
 
 /*
- * The selection bar: Quote, Ok, Side chat, and Copy for text selected in a chat.
+ * The selection bar: Quote, ok, Side chat, and Copy for text selected in a chat.
  *
  * Web and desktop only. iOS and Android route selection through the platform
  * menu, which a plugin cannot extend.
@@ -182,6 +182,24 @@ declare const localStorage: { getItem(key: string): string | null };
 declare const navigator: { readonly userAgent: string };
 
 const ELEMENT_NODE = 1;
+
+/** Where the app keeps Settings; the legacy key predates the current one. */
+const APP_SETTINGS_KEYS = ["@paseo:app-settings", "@paseo:settings"];
+
+/** Settings → Sending → Default send, as the composer reads it. */
+function readSendBehavior(): SendBehavior {
+  for (const key of APP_SETTINGS_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw === null) continue;
+      const value = (JSON.parse(raw) as { sendBehavior?: unknown }).sendBehavior;
+      return value === "interrupt" || value === "queue" ? value : "steer";
+    } catch {
+      // Unreadable settings fall through to the app's own default.
+    }
+  }
+  return "steer";
+}
 
 // ---------------------------------------------------------------------------
 // One bar for every installation on the page
@@ -504,7 +522,7 @@ const MARKUP = `
 <div class="panel" data-mode="bar">
   <div class="bar" role="toolbar" aria-label="Selection">
     <button data-action="quote" title="Quote into the message box">${svg(ICON.quote)}Quote</button>
-    <button data-action="ok" title="Quote into the message box with “ok”">ok</button>
+    <button data-action="ok" title="Send the quote with “ok”">ok</button>
     <button data-action="side" title="Ask about this in a side chat">${svg(ICON.side)}Side chat</button>
     <span class="divider"></span>
     <button data-action="copy" class="icon-only" title="Copy as Markdown">${svg(ICON.copy)}</button>
@@ -663,7 +681,8 @@ function createSelectionBar(): () => void {
     mode = "bar";
     panel.setAttribute("data-mode", "bar");
     button("quote").disabled = !next.composer;
-    button("ok").disabled = !next.composer;
+    button("ok").disabled = !next.agentId;
+    button("ok").textContent = "ok";
     button("side").disabled = !next.agentId;
     button("copy").innerHTML = svg(ICON.copy);
     applyPalette(host, next.anchor);
@@ -689,9 +708,33 @@ function createSelectionBar(): () => void {
     if (appendToComposer(snapshot.composer, `${formatQuote(snapshot.source)}\n\n`)) hide();
   };
 
+  /** Sends the quote with "ok" to the agent; the button reports the outcome. */
   const ok = () => {
-    if (!snapshot?.composer) return;
-    if (appendToComposer(snapshot.composer, formatReply(snapshot.source, "ok"))) hide();
+    const current = snapshot;
+    if (!current?.agentId || busy) return;
+    const agentId = current.agentId;
+    const text = formatReply(current.source, "ok");
+    const target = button("ok");
+    const flash = (label: string, ms: number) => {
+      target.textContent = label;
+      window.clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(hide, ms);
+    };
+    busy = true;
+    target.disabled = true;
+    void (async () => {
+      try {
+        const owner = await findOwner(agentId);
+        const outcome = await sendReply(owner.paseo, agentId, text, readSendBehavior());
+        if (outcome === "queued") flash("Queued", 1400);
+        else hide();
+      } catch (cause) {
+        console.error("[quote] ok was not sent", cause);
+        // Nothing is lost: the reply lands in the message box instead.
+        if (current.composer && appendToComposer(current.composer, text)) hide();
+        else flash("Not sent", 2000);
+      }
+    })();
   };
 
   const copy = () => {

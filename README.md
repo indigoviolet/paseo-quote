@@ -15,8 +15,9 @@ quote always lands in the chat it came from, even with several tabs or split pan
 
 ### ok
 
-A canned reply: quotes the selection into the message box like **Quote**, followed by `ok`.
-Press Enter in the message box to send it.
+A canned reply: sends the selection to the agent at once, as a `> quote` followed by `ok`. While
+the agent is running, it follows **Settings → Default send** (interrupt, steer, or queue), as the
+message box does. If sending fails, the quote and `ok` land in the message box instead.
 
 ### Side chat
 
@@ -64,8 +65,10 @@ Dismiss the bar by clicking elsewhere. Esc in the chat itself is Paseo's "interr
 - Paseo has no plugin API for the message box, so the plugin works with the app's markup. The
   selectors it relies on are listed at the top of `client/web.ts`; a later Paseo release may need
   an update.
-- Connected to several daemons with the plugin on each, the page shows one bar; a side chat
-  starts on whichever daemon owns the selected agent.
+- Connected to several daemons with the plugin on each, the page shows one bar; **ok** and side
+  chats go to whichever daemon owns the selected agent.
+- With **Default send** set to queue, an **ok** sent while the agent runs waits in the plugin, not
+  in the message box's queue, and is lost if the app reloads first.
 - A side chat is a fresh session: Paseo cannot fork a conversation. It sees the quote, the
   message it came from, and the last 8 turns of the main chat.
 - The side chat panel renders Markdown simply: code blocks and quotes, no emphasis. Open it as a
