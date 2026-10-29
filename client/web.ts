@@ -1,11 +1,11 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { copyText } from "@getpaseo/plugin/client/react-native";
 import { Platform } from "react-native";
-import { sendReply, startSideChat, type SendBehavior } from "./actions";
+import { startSideChat } from "./actions";
 import { formatQuote, formatReply, joinParagraph, type QuoteSource } from "./format";
 
 /*
- * The selection bar: Quote, Reply, Side chat, and Copy for text selected in a chat.
+ * The selection bar: Quote, Ok, Side chat, and Copy for text selected in a chat.
  *
  * Web and desktop only. iOS and Android route selection through the platform
  * menu, which a plugin cannot extend.
@@ -16,11 +16,16 @@ import { formatQuote, formatReply, joinParagraph, type QuoteSource } from "./for
  *
  * The bar lives in a shadow root on `document.body`: the chat clips and
  * translates its content, and the host's global CSS would otherwise restyle the
- * bar. The reply field is the one exception. It is a light-DOM textarea slotted
+ * bar. The side chat field is the one exception. It is a light-DOM textarea slotted
  * into the shadow tree, because the host's keyboard shortcuts classify the
  * event target: a textarea reads as "editable", while anything inside a shadow
  * root reads as the shadow host, where Escape interrupts the agent and Space
  * toggles voice.
+ *
+ * Paseo evaluates this bundle once per daemon the app is connected to, so with
+ * several daemons there are several installations on one page. They share one
+ * bar through a registry on `window`, and an action goes to the daemon that owns
+ * the selected agent: the markup names the agent but not its host.
  */
 
 // ---------------------------------------------------------------------------
@@ -152,6 +157,7 @@ interface DomDataTransfer {
 }
 
 declare const window: DomEventTarget & {
+  __paseoQuote?: QuoteRegistry;
   readonly innerWidth: number;
   readonly innerHeight: number;
   getSelection(): DomSelection | null;
@@ -177,27 +183,42 @@ declare const navigator: { readonly userAgent: string };
 
 const ELEMENT_NODE = 1;
 
-/** Where the app keeps Settings; the legacy key predates the current one. */
-const APP_SETTINGS_KEYS = ["@paseo:app-settings", "@paseo:settings"];
+// ---------------------------------------------------------------------------
+// One bar for every installation on the page
 
-/** Settings → Sending → Default send, as the composer reads it. */
-function readSendBehavior(): SendBehavior {
-  for (const key of APP_SETTINGS_KEYS) {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw === null) continue;
-      const value = (JSON.parse(raw) as { sendBehavior?: unknown }).sendBehavior;
-      return value === "interrupt" || value === "queue" ? value : "steer";
-    } catch {
-      // Unreadable settings fall through to the app's own default.
-    }
-  }
-  return "steer";
+interface QuoteRegistry {
+  clients: PluginClientContext[];
+  /** Removes the shared bar; null until the first installation creates it. */
+  removeBar: (() => void) | null;
+  lastOwner: { agentId: string; client: PluginClientContext } | null;
 }
 
-/** Only called on the web, where `navigator` exists. */
-function modKey(): string {
-  return /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+/** On `window`: each installation evaluates its own copy of this module. */
+function registry(): QuoteRegistry {
+  window.__paseoQuote ??= { clients: [], removeBar: null, lastOwner: null };
+  return window.__paseoQuote;
+}
+
+/**
+ * The installation whose daemon knows `agentId`. A daemon that does not own the
+ * agent answers null or throws. The last owner is asked first, so a repeated
+ * action costs one refresh.
+ */
+async function findOwner(agentId: string): Promise<PluginClientContext> {
+  const state = registry();
+  const last = state.lastOwner?.agentId === agentId ? state.lastOwner.client : null;
+  const ordered = last ? [last, ...state.clients.filter((client) => client !== last)] : state.clients;
+  for (const candidate of ordered) {
+    try {
+      if ((await candidate.paseo.agents.ref(agentId).refresh())?.agent) {
+        state.lastOwner = { agentId, client: candidate };
+        return candidate;
+      }
+    } catch {
+      // A daemon that cannot resolve the agent is not its owner.
+    }
+  }
+  throw new Error(`Agent not found: ${agentId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -402,12 +423,11 @@ function applyPalette(host: DomElement, anchor: DomElement): void {
 }
 
 // ---------------------------------------------------------------------------
-// The bar and the reply card
+// The bar and the side chat card
 
 const ICON = {
   quote:
     '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
-  reply: '<polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',
   side: '<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>',
   copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
@@ -484,7 +504,7 @@ const MARKUP = `
 <div class="panel" data-mode="bar">
   <div class="bar" role="toolbar" aria-label="Selection">
     <button data-action="quote" title="Quote into the message box">${svg(ICON.quote)}Quote</button>
-    <button data-action="reply" title="Reply to this passage">${svg(ICON.reply)}Reply</button>
+    <button data-action="ok" title="Quote into the message box with “ok”">ok</button>
     <button data-action="side" title="Ask about this in a side chat">${svg(ICON.side)}Side chat</button>
     <span class="divider"></span>
     <button data-action="copy" class="icon-only" title="Copy as Markdown">${svg(ICON.copy)}</button>
@@ -496,15 +516,13 @@ const MARKUP = `
       <span class="error" role="alert"></span>
       <span class="hint"></span>
       <button data-action="cancel">Cancel</button>
-      <button data-action="add">Add to chat</button>
-      <button data-action="send" class="primary">Send</button>
       <button data-action="ask" class="primary">Ask</button>
     </div>
   </div>
 </div>
 `;
 
-type Mode = "hidden" | "bar" | "reply" | "side";
+type Mode = "hidden" | "bar" | "side";
 
 const GAP = 8;
 
@@ -512,10 +530,27 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
-/** Installs the selection bar. Returns cleanup; a no-op off the web. */
+/**
+ * Registers this installation with the page's selection bar, creating the bar
+ * if it is the first. Returns cleanup; a no-op off the web.
+ */
 export function installSelectionBar(client: PluginClientContext): () => void {
   if (Platform.OS !== "web" || typeof document === "undefined") return () => {};
 
+  const state = registry();
+  state.clients.push(client);
+  state.removeBar ??= createSelectionBar();
+  return () => {
+    state.clients = state.clients.filter((candidate) => candidate !== client);
+    if (state.lastOwner?.client === client) state.lastOwner = null;
+    if (state.clients.length === 0) {
+      state.removeBar?.();
+      state.removeBar = null;
+    }
+  };
+}
+
+function createSelectionBar(): () => void {
   const host = document.createElement("div");
   host.setAttribute("data-paseo-quote", "");
   for (const [property, value] of [
@@ -607,7 +642,7 @@ export function installSelectionBar(client: PluginClientContext): () => void {
   const setBusy = (value: boolean) => {
     busy = value;
     field.readOnly = value;
-    for (const action of ["add", "send", "ask", "cancel"]) {
+    for (const action of ["ask", "cancel"]) {
       button(action).disabled = value;
     }
   };
@@ -628,7 +663,7 @@ export function installSelectionBar(client: PluginClientContext): () => void {
     mode = "bar";
     panel.setAttribute("data-mode", "bar");
     button("quote").disabled = !next.composer;
-    button("reply").disabled = !next.composer && !next.agentId;
+    button("ok").disabled = !next.composer;
     button("side").disabled = !next.agentId;
     button("copy").innerHTML = svg(ICON.copy);
     applyPalette(host, next.anchor);
@@ -636,30 +671,15 @@ export function installSelectionBar(client: PluginClientContext): () => void {
     place(next.first, "above");
   };
 
-  const openCard = (kind: "reply" | "side") => {
+  const openSideChat = () => {
     if (!snapshot) return;
-    mode = kind;
+    mode = "side";
     panel.setAttribute("data-mode", "card");
     quotePreview.textContent = snapshot.preview;
     setError("");
     field.value = "";
-    const canSend = Boolean(snapshot.agentId);
-    const canAdd = Boolean(snapshot.composer);
-    button("add").hidden = kind !== "reply" || !canAdd;
-    button("send").hidden = kind !== "reply" || !canSend;
-    button("ask").hidden = kind !== "side";
-    if (kind === "reply") {
-      field.placeholder = "Reply to this passage…";
-      hint.textContent =
-        canSend && canAdd
-          ? `Enter — send · ${modKey()}+Enter — add`
-          : canSend
-            ? "Enter — send"
-            : "Enter — add to chat";
-    } else {
-      field.placeholder = "Ask about this in a side chat…";
-      hint.textContent = "Enter — ask · Shift+Enter — new line";
-    }
+    field.placeholder = "Ask about this in a side chat…";
+    hint.textContent = "Enter — ask · Shift+Enter — new line";
     place(snapshot.last, "below");
     field.focus({ preventScroll: true });
   };
@@ -667,6 +687,11 @@ export function installSelectionBar(client: PluginClientContext): () => void {
   const quote = () => {
     if (!snapshot?.composer) return;
     if (appendToComposer(snapshot.composer, `${formatQuote(snapshot.source)}\n\n`)) hide();
+  };
+
+  const ok = () => {
+    if (!snapshot?.composer) return;
+    if (appendToComposer(snapshot.composer, formatReply(snapshot.source, "ok"))) hide();
   };
 
   const copy = () => {
@@ -677,15 +702,6 @@ export function installSelectionBar(client: PluginClientContext): () => void {
       window.clearTimeout(flashTimer);
       flashTimer = window.setTimeout(hide, 700);
     });
-  };
-
-  const addReply = () => {
-    if (!snapshot?.composer || busy) return;
-    if (appendToComposer(snapshot.composer, formatReply(snapshot.source, field.value))) {
-      hide();
-    } else {
-      setError("The message box is not available.");
-    }
   };
 
   /** Runs `work`, then closes; a returned note stays on screen for a moment first. */
@@ -709,29 +725,19 @@ export function installSelectionBar(client: PluginClientContext): () => void {
     }
   };
 
-  const send = () => {
-    const current = snapshot;
-    if (!current?.agentId || !field.value.trim()) return;
-    const agentId = current.agentId;
-    const text = formatReply(current.source, field.value);
-    void run(async () => {
-      const outcome = await sendReply(client.paseo, agentId, text, readSendBehavior());
-      return outcome === "queued" ? "Queued — sends when the current turn ends" : undefined;
-    });
-  };
-
   const askSide = () => {
     const current = snapshot;
     if (!current?.agentId || !field.value.trim()) return;
     const agentId = current.agentId;
     const question = field.value;
     void run(async () => {
-      const side = await startSideChat(client.paseo, {
+      const owner = await findOwner(agentId);
+      const side = await startSideChat(owner.paseo, {
         agentId,
         quote: formatQuote(current.source),
         question,
       });
-      client.openPanel("side-chat", {
+      owner.openPanel("side-chat", {
         workspaceId: side.workspaceId,
         agentId: side.agentId,
         location: "explorer",
@@ -741,12 +747,10 @@ export function installSelectionBar(client: PluginClientContext): () => void {
 
   const actions: Record<string, () => void> = {
     quote,
-    reply: () => openCard("reply"),
-    side: () => openCard("side"),
+    ok,
+    side: openSideChat,
     copy,
     cancel: hide,
-    add: addReply,
-    send,
     ask: askSide,
   };
 
@@ -775,21 +779,13 @@ export function installSelectionBar(client: PluginClientContext): () => void {
     }
     if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    // Enter is the highlighted action, Send; the modifier defers into the composer.
-    const defer = event.ctrlKey || event.metaKey;
-    if (mode === "side") {
-      askSide();
-    } else if (snapshot?.agentId && (!defer || !snapshot.composer)) {
-      send();
-    } else {
-      addReply();
-    }
+    askSide();
   };
   field.addEventListener("keydown", onFieldKeyDown);
 
   const sync = () => {
     pending = 0;
-    if (mode === "reply" || mode === "side") return;
+    if (mode === "side") return;
     const next = readSnapshot(host);
     if (next) showBar(next);
     else if (mode === "bar") hide();
@@ -802,8 +798,8 @@ export function installSelectionBar(client: PluginClientContext): () => void {
 
   const onPointerDown: DomListener = (event) => {
     if (inside(event) || mode === "hidden") return;
-    // An unsent reply survives a stray click; Escape or Cancel discards it.
-    if ((mode === "reply" || mode === "side") && field.value.trim()) return;
+    // An unsent question survives a stray click; Escape or Cancel discards it.
+    if (mode === "side" && field.value.trim()) return;
     hide();
   };
   const onPointerUp: DomListener = (event) => {

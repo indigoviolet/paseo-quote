@@ -13,13 +13,10 @@ quote always lands in the chat it came from, even with several tabs or split pan
 
 ![A quote and a reply in the message box](images/02-quote.png)
 
-### Reply
+### ok
 
-Opens a field right at the selection, like Claude's "Reply". **Enter** sends the quote and your
-reply at once; **Ctrl/⌘+Enter** adds them to the message box instead. While the agent is running,
-Enter follows **Settings → Default send** (interrupt, steer, or queue), as the message box does.
-
-![The reply field with the quoted passage](images/03-reply.png)
+A canned reply: quotes the selection into the message box like **Quote**, followed by `ok`.
+Press Enter in the message box to send it.
 
 ### Side chat
 
@@ -54,11 +51,9 @@ writes into its message box. It has no daemon-side code.
 
 | Where        | Key                  | Effect                                        |
 | ------------ | -------------------- | --------------------------------------------- |
-| Reply field  | Enter                | Send the quote and reply                      |
-| Reply field  | Ctrl/⌘+Enter         | Add the quote and reply to the message box    |
 | Side chat    | Enter                | Ask                                           |
-| Both         | Shift+Enter          | New line                                      |
-| Both         | Esc                  | Cancel                                        |
+| Side chat    | Shift+Enter          | New line                                      |
+| Side chat    | Esc                  | Cancel                                        |
 
 Dismiss the bar by clicking elsewhere. Esc in the chat itself is Paseo's "interrupt agent".
 
@@ -69,8 +64,8 @@ Dismiss the bar by clicking elsewhere. Esc in the chat itself is Paseo's "interr
 - Paseo has no plugin API for the message box, so the plugin works with the app's markup. The
   selectors it relies on are listed at the top of `client/web.ts`; a later Paseo release may need
   an update.
-- With **Default send** set to queue, a reply sent while the agent runs waits in the plugin, not in
-  the message box's queue, and is lost if the app reloads first.
+- Connected to several daemons with the plugin on each, the page shows one bar; a side chat
+  starts on whichever daemon owns the selected agent.
 - A side chat is a fresh session: Paseo cannot fork a conversation. It sees the quote, the
   message it came from, and the last 8 turns of the main chat.
 - The side chat panel renders Markdown simply: code blocks and quotes, no emphasis. Open it as a

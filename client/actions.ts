@@ -4,52 +4,6 @@ import { buildSideChatSystemPrompt, sideChatTitle, type ChatTurn } from "./forma
 type PaseoApi = PluginClientContext["paseo"];
 type AgentHandle = ReturnType<PaseoApi["agents"]["ref"]>;
 
-/** Settings → Sending → Default send: what Enter does while the agent runs. */
-export type SendBehavior = "interrupt" | "steer" | "queue";
-
-/**
- * The daemon accepts `activeTurnBehavior` and the SDK forwards it, but the
- * SDK's option type does not list it yet.
- */
-type SendOptions = NonNullable<Parameters<AgentHandle["send"]>[1]> & {
-  activeTurnBehavior: "interrupt" | "steer";
-};
-
-/** Long enough for any turn; the wait ends early when the agent needs attention. */
-const QUEUE_WAIT_MS = 6 * 60 * 60 * 1000;
-
-/**
- * Sends the text as an ordinary user message, the way the composer's Enter
- * would: steer or interrupt a running turn, or hold it until the turn ends.
- *
- * Paseo's own queue lives inside the composer, out of a plugin's reach, so a
- * queued reply waits here instead and is not shown in the composer's queue.
- */
-export async function sendReply(
-  paseo: PaseoApi,
-  agentId: string,
-  text: string,
-  behavior: SendBehavior,
-): Promise<"sent" | "queued"> {
-  const agent = paseo.agents.ref(agentId);
-  if (behavior === "queue") {
-    const status = (await agent.refresh())?.agent.status;
-    if (status === "running" || status === "initializing") {
-      // A turn that stops for a permission ends the wait; the composer
-      // interrupts in that case too.
-      const interrupt: SendOptions = { activeTurnBehavior: "interrupt" };
-      void agent
-        .waitForFinish(QUEUE_WAIT_MS)
-        .then(() => agent.send(text, interrupt))
-        .catch((cause: unknown) => console.error("[quote] Queued reply was not sent", cause));
-      return "queued";
-    }
-  }
-  const options: SendOptions = { activeTurnBehavior: behavior === "steer" ? "steer" : "interrupt" };
-  await agent.send(text, options);
-  return "sent";
-}
-
 export interface SideChat {
   agentId: string;
   workspaceId: string;
