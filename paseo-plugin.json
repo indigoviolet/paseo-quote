@@ -1,6 +1,6 @@
 {
   "id": "quote",
-  "description": "Quote selected chat text into the message box, reply “ok” to it, or ask about it in a side chat",
+  "description": "Quote selected chat text into the message box, reply “ok” or “explain” to it, or ask about it in a side chat",
   "requirements": {
     "paseo": ">=0.10.1"
   }

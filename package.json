@@ -18,7 +18,7 @@
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
   },
-  "description": "Quote selected chat text into the Paseo message box, reply “ok” to it, or ask about it in a side chat",
+  "description": "Quote selected chat text into the Paseo message box, reply “ok” or “explain” to it, or ask about it in a side chat",
   "license": "MIT",
   "author": "Chechulin Serhii",
   "repository": {

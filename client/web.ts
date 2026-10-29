@@ -5,7 +5,7 @@ import { sendReply, startSideChat, type SendBehavior } from "./actions";
 import { formatQuote, formatReply, joinParagraph, type QuoteSource } from "./format";
 
 /*
- * The selection bar: Quote, ok, Side chat, and Copy for text selected in a chat.
+ * The selection bar: Quote, ok, explain, Side chat, and Copy for text selected in a chat.
  *
  * Web and desktop only. iOS and Android route selection through the platform
  * menu, which a plugin cannot extend.
@@ -449,6 +449,8 @@ const ICON = {
   side: '<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>',
   copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  ok: '<path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>',
+  explain: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
 } as const;
 
 function svg(paths: string): string {
@@ -522,7 +524,8 @@ const MARKUP = `
 <div class="panel" data-mode="bar">
   <div class="bar" role="toolbar" aria-label="Selection">
     <button data-action="quote" title="Quote into the message box">${svg(ICON.quote)}Quote</button>
-    <button data-action="ok" title="Send the quote with “ok”">ok</button>
+    <button data-action="ok" title="Send the quote with “ok”">${svg(ICON.ok)}ok</button>
+    <button data-action="explain" title="Send the quote with “explain”">${svg(ICON.explain)}explain</button>
     <button data-action="side" title="Ask about this in a side chat">${svg(ICON.side)}Side chat</button>
     <span class="divider"></span>
     <button data-action="copy" class="icon-only" title="Copy as Markdown">${svg(ICON.copy)}</button>
@@ -541,6 +544,10 @@ const MARKUP = `
 `;
 
 type Mode = "hidden" | "bar" | "side";
+
+/** One-click replies: each sends the quote followed by its own label. */
+const CANNED = ["ok", "explain"] as const;
+type CannedReply = (typeof CANNED)[number];
 
 const GAP = 8;
 
@@ -681,8 +688,10 @@ function createSelectionBar(): () => void {
     mode = "bar";
     panel.setAttribute("data-mode", "bar");
     button("quote").disabled = !next.composer;
-    button("ok").disabled = !next.agentId;
-    button("ok").textContent = "ok";
+    for (const reply of CANNED) {
+      button(reply).disabled = !next.agentId;
+      button(reply).innerHTML = `${svg(ICON[reply])}${reply}`;
+    }
     button("side").disabled = !next.agentId;
     button("copy").innerHTML = svg(ICON.copy);
     applyPalette(host, next.anchor);
@@ -708,13 +717,13 @@ function createSelectionBar(): () => void {
     if (appendToComposer(snapshot.composer, `${formatQuote(snapshot.source)}\n\n`)) hide();
   };
 
-  /** Sends the quote with "ok" to the agent; the button reports the outcome. */
-  const ok = () => {
+  /** Sends the quote with a canned reply to the agent; its button reports the outcome. */
+  const sendCanned = (reply: CannedReply) => {
     const current = snapshot;
     if (!current?.agentId || busy) return;
     const agentId = current.agentId;
-    const text = formatReply(current.source, "ok");
-    const target = button("ok");
+    const text = formatReply(current.source, reply);
+    const target = button(reply);
     const flash = (label: string, ms: number) => {
       target.textContent = label;
       window.clearTimeout(flashTimer);
@@ -729,7 +738,7 @@ function createSelectionBar(): () => void {
         if (outcome === "queued") flash("Queued", 1400);
         else hide();
       } catch (cause) {
-        console.error("[quote] ok was not sent", cause);
+        console.error(`[quote] ${reply} was not sent`, cause);
         // Nothing is lost: the reply lands in the message box instead.
         if (current.composer && appendToComposer(current.composer, text)) hide();
         else flash("Not sent", 2000);
@@ -790,7 +799,8 @@ function createSelectionBar(): () => void {
 
   const actions: Record<string, () => void> = {
     quote,
-    ok,
+    ok: () => sendCanned("ok"),
+    explain: () => sendCanned("explain"),
     side: openSideChat,
     copy,
     cancel: hide,
