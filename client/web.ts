@@ -139,7 +139,9 @@ interface DomTextArea extends DomElement {
 
 interface DomRange {
   readonly startContainer: DomNode;
+  readonly startOffset: number;
   readonly endContainer: DomNode;
+  readonly endOffset: number;
   readonly commonAncestorContainer: DomNode;
   getClientRects(): ArrayLike<DomRect>;
   getBoundingClientRect(): DomRect;
@@ -318,6 +320,24 @@ function usableComposer(input: DomTextArea | null): DomTextArea | null {
 function agentIdOf(tab: DomElement | null): string | null {
   const testId = tab?.getAttribute("data-testid");
   return testId?.startsWith(AGENT_TAB_PREFIX) ? testId.slice(AGENT_TAB_PREFIX.length) || null : null;
+}
+
+type Bounds = Pick<DomRange, "startContainer" | "startOffset" | "endContainer" | "endOffset">;
+
+/** A copy of the range's ends: the selection's own range may be updated in place. */
+function boundsOf(range: DomRange): Bounds {
+  const { startContainer, startOffset, endContainer, endOffset } = range;
+  return { startContainer, startOffset, endContainer, endOffset };
+}
+
+function sameRange(a: Bounds, b: DomRange | undefined): boolean {
+  return (
+    !!b &&
+    a.startContainer === b.startContainer &&
+    a.startOffset === b.startOffset &&
+    a.endContainer === b.endContainer &&
+    a.endOffset === b.endOffset
+  );
 }
 
 function readSource(selection: DomSelection, range: DomRange, start: DomElement): QuoteSource {
@@ -635,6 +655,9 @@ function createSelectionBar(): () => void {
   let busy = false;
   let pending = 0;
   let flashTimer = 0;
+  // The selection an outside click dismissed the bar from. Clicks that leave the
+  // selection in place (on buttons, on non-text areas) must not bring it back.
+  let dismissed: Bounds | null = null;
 
   const setError = (message: string) => {
     error.textContent = message;
@@ -840,6 +863,8 @@ function createSelectionBar(): () => void {
     pending = 0;
     if (mode === "side") return;
     const next = readSnapshot(host);
+    if (next && dismissed && sameRange(dismissed, window.getSelection()?.getRangeAt(0))) return;
+    dismissed = null;
     if (next) showBar(next);
     else if (mode === "bar") hide();
   };
@@ -853,6 +878,8 @@ function createSelectionBar(): () => void {
     if (inside(event) || mode === "hidden") return;
     // An unsent question survives a stray click; Escape or Cancel discards it.
     if (mode === "side" && field.value.trim()) return;
+    const selection = window.getSelection();
+    dismissed = selection && selection.rangeCount > 0 ? boundsOf(selection.getRangeAt(0)) : null;
     hide();
   };
   const onPointerUp: DomListener = (event) => {
